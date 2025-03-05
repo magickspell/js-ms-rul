@@ -1,14 +1,60 @@
+const QueryParamsValues = ["full_name", "fullName", "role", "efficiency", "id"]
+
 function handleErr(res, err) {
   res.writeHead(500, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ success: false, result: { error: err.message } }));
+  return;
 }
 
 function handleUserNotFound(res) {
   res.writeHead(404, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ success: false, result: { error: "user not found" } }));
+  return;
+}
+
+// mysql плохо подставляет параметры в query, поэтому валидируем их
+function validate(res, id, queryParams, payload) {
+  if (id) {
+    if (isNaN(Number(id))) {
+      handleErr(res, { message: "ID not valid" });
+      return false;
+    }
+  }
+
+  if (queryParams) {
+    for (const value of Object.keys(queryParams)) {
+      if (value === "efficiency" || value === "id") {
+        if (isNaN(Number(queryParams[value]))) {
+          handleErr(res, { message: 
+            `expect number get: ${queryParams[value]} (${typeof queryParams[value]})}`  
+          });
+          return false;
+        }
+      }
+      if (!QueryParamsValues.includes(value)) {
+        handleErr(res, { message: `unknown query parameter: ${value}` });
+        return false;
+      }
+    }
+  }
+
+  if (payload) {
+    for (const value of Object.keys(payload)) {
+      if (!QueryParamsValues.includes(value)) {
+        handleErr(res, { message: `unknown payload: ${value}` });
+        return false;
+      }
+    }
+  }
+
+  return true;
 }
 
 export function createUser(db, res, payload) {
+  const valid = validate(res, undefined, undefined, payload);
+  if (!valid) {
+    return;
+  }
   const { full_name, role, efficiency } = payload;
   const query = `INSERT INTO users (full_name, role, efficiency) VALUES (?, ?, ?)`;
   db.query(query, [full_name, role, efficiency], (err, result) => {
@@ -22,6 +68,10 @@ export function createUser(db, res, payload) {
 }
 
 export function getUser(db, res, id, queryParams) {
+  const valid = validate(res, id, queryParams, undefined);
+  if (!valid) {
+    return;
+  }
   let query = `SELECT * FROM users WHERE 1=1`;
   let queryParamsArr = [];
 
@@ -35,7 +85,6 @@ export function getUser(db, res, id, queryParams) {
     queryParamsArr.push(queryParams.role)
   }
   if (queryParams.efficiency) {
-    // возможно вы тестите по другому (по равенству?), не уточнял у hr
     query += ' AND efficiency >= ?';
     queryParamsArr.push(queryParams.efficiency)
   }
@@ -43,7 +92,6 @@ export function getUser(db, res, id, queryParams) {
     query += ' AND full_name = ?';
     queryParamsArr.push(queryParams.fullName)
   }
-  // оверхед, но я не уточнял у hr как вы в тестах пишите параметр
   if (queryParams.full_name) {
     query += ' AND full_name = ?';
     queryParamsArr.push(queryParams.full_name)
@@ -60,6 +108,10 @@ export function getUser(db, res, id, queryParams) {
 }
 
 export function updateUser(db, res, id, payload) {
+  const valid = validate(res, id, undefined, payload);
+  if (!valid) {
+    return;
+  }
   const { full_name, role, efficiency } = payload;
   let query = `UPDATE users SET `;
   let queryParamsArr = [];
@@ -123,6 +175,10 @@ export function updateUser(db, res, id, payload) {
 }
 
 export function deleteUser(db, res, id) {
+  const valid = validate(res, id, undefined, undefined);
+  if (!valid) {
+    return;
+  }
   if (id) {
     const userQuery = `SELECT * FROM users WHERE id = ?`;
     db.query(userQuery, [id], (err, users) => {
